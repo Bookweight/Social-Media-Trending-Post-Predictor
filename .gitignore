@@ -9,6 +9,7 @@ wheels/
 /data
 /tools
 /results
+/ptt_data.db
 
 # Virtual environments
 .venv
