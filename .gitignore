@@ -8,6 +8,7 @@ wheels/
 
 /data
 /tools
+/results
 
 # Virtual environments
 .venv

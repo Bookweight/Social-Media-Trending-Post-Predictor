@@ -11,13 +11,15 @@ import glob
 import jieba.analyse
 import numpy as np
 
+import db_manager
+
 # --- 1. 配置與設定 ---
 BOARD = 'Gossiping'
 INITIAL_LOOKBACK_HOURS = 24  
-REGULAR_LOOKBACK_HOURS = 1   
+REGULAR_LOOKBACK_HOURS = 12
 INTERVAL_SECONDS = 600       
 DATA_DIR = 'data'
-AUTHOR_HISTORY_FILE = 'data/author_history_recalc.csv' # 🆕 新增: 作者歷史統計快取檔
+AUTHOR_HISTORY_FILE = 'data/author_history_recalc.csv' 
 DEBUG_MODE = False          
 CLIPPING_THRESHOLD = 100     
 
@@ -46,18 +48,14 @@ def log(msg):
     if DEBUG_MODE:
         print(f"[DEBUG] {msg}")
 
-# --- 2. 數據讀取與輔助函式 (核心修改區) ---
+# --- 2. 數據讀取與輔助函式 ---
+
 def update_author_history_index():
     print("🔄 正在更新作者歷史數據索引...")
     
-    # 1. 取得所有 CSV
     all_csv_files = glob.glob(os.path.join(DATA_DIR, '**', '*.csv'), recursive=True)
-    
-    # 🚨 [修正重點] 路徑標準化比對，確保過濾掉歷史檔
-    # 將設定檔的路徑與 glob 找出的路徑都轉為絕對路徑或標準格式來比對
     history_file_abs = os.path.abspath(AUTHOR_HISTORY_FILE)
     
-    # 過濾邏輯：只保留「不是」歷史統計檔的 CSV
     target_files = []
     for f in all_csv_files:
         if os.path.abspath(f) != history_file_abs:
@@ -67,11 +65,9 @@ def update_author_history_index():
         print("⚠️ 無原始歷史資料可更新。")
         return {}
 
-
     df_list = []
     for f in all_csv_files:
         try:
-            # 只讀取必要欄位加速
             df = pd.read_csv(f, usecols=['Post_ID', 'author', 'real_push_score'])
             df_list.append(df)
         except:
@@ -82,25 +78,20 @@ def update_author_history_index():
 
     full_df = pd.concat(df_list, ignore_index=True)
     
-    # 🚨 關鍵去重邏輯: 同一篇文章取最高分 (代表最終成績)
     unique_posts = full_df.sort_values('real_push_score', ascending=False).drop_duplicates(subset=['Post_ID'], keep='first')
     
-    # 計算平均
     author_stats = unique_posts.groupby('author').agg(
         raw_avg=('real_push_score', 'mean'),
         count=('Post_ID', 'count')
     ).reset_index()
     
-    # 5. 應用貝式平滑 (Bayesian Smoothing)
-    # C = 3, Global Mean = 6.02
     C = 3
-    global_mean = unique_posts['real_push_score'].mean() # 自動計算當前全站平均
+    global_mean = unique_posts['real_push_score'].mean() 
     
     author_stats['author_avg_push'] = (
         (C * global_mean) + (author_stats['count'] * author_stats['raw_avg'])
     ) / (C + author_stats['count'])
     
-    # 只保留需要的欄位存檔
     final_df = author_stats[['author', 'author_avg_push']]
     final_df.to_csv(AUTHOR_HISTORY_FILE, index=False, encoding='utf-8-sig')
     
@@ -109,10 +100,6 @@ def update_author_history_index():
     return final_df.set_index('author')['author_avg_push'].to_dict()
 
 def load_author_history():
-    """
-    🆕 修改功能: 優先讀取快取檔案，若無則執行更新。
-    這樣可以將讀取時間從 O(N個檔案) 降低到 O(1個檔案)。
-    """
     if os.path.exists(AUTHOR_HISTORY_FILE):
         try:
             df = pd.read_csv(AUTHOR_HISTORY_FILE)
@@ -121,7 +108,6 @@ def load_author_history():
             print(f"⚠️ 讀取歷史索引檔失敗: {e}，嘗試重新計算...")
             return update_author_history_index()
     else:
-        # 如果檔案不存在，則執行一次完整的計算
         return update_author_history_index()
 
 def get_soup(url):
@@ -144,7 +130,7 @@ def extract_key_phrases(text, topK=5):
     return " ; ".join(filtered[:topK])
 
 def get_article_category(title):
-    match = re.search(r'^\[(.*?)\]', title)
+    match = re.search(r'\[(.*?)\]', title) # 修正: 移除 ^ 以支援 Re:
     return match.group(1).strip() if match else 'General'
 
 def clean_article_content(soup):
@@ -160,8 +146,6 @@ def clean_article_content(soup):
     links = len(main_content.find_all('a', href=True))
     
     return text, len(list(jieba.cut(text))), text.count('?'), text.count('!'), links, sp_count
-
-# --- 3. 抓取文章內文 ---
 
 def get_article_content(url):
     try:
@@ -205,161 +189,151 @@ def get_article_content(url):
 def run_snapshot(author_history_cache):
     current_time = datetime.now()
     crawl_time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"[{crawl_time_str}] 啟動 V2 快照爬蟲任務 (特徵補完版)...")
+    print(f"[{crawl_time_str}] 啟動 V2 快照爬蟲任務 (含重試機制)...")
 
-    # 設定回溯時間
     lookback_hours = REGULAR_LOOKBACK_HOURS
     time_threshold = current_time - timedelta(hours=lookback_hours)
     
-    articles_data = []
-    url = PTT_URL
-    keep_scraping = True
+    # 🆕 新增: 重試設定
+    max_retries = 3
+    retry_count = 0
     
-    while keep_scraping:
-        soup = get_soup(url)
-        if not soup: break
+    while retry_count < max_retries:
+        articles_data = []
+        url = PTT_URL
+        keep_scraping = True
+        
+        # --- 開始爬取迴圈 ---
+        while keep_scraping:
+            soup = get_soup(url)
+            if not soup: 
+                # 抓不到網頁，視為異常，跳出讓外層重試
+                break 
+                
+            divs = soup.find_all('div', class_='r-ent')
+            if not divs: break
             
-        divs = soup.find_all('div', class_='r-ent')
-        if not divs: break
-        
-        # 處理置底分隔線
-        sep = soup.find('div', class_='r-list-sep')
-        if sep:
-            divs = sep.find_all_previous('div', class_='r-ent')
-        
-        # 反轉順序 (從最新開始)
-        for div in divs[::-1]:
-            try:
-                link = div.find('a')
-                if not link: continue
-                
-                href = link['href']
-                article_url = PTT_BASE_URL + href
-                
-                # 🚨 補回: 抓取列表上的 nrec_tag (列表推文數顯示)
-                nrec_node = div.find('div', class_='nrec')
-                nrec_tag = nrec_node.get_text().strip() if nrec_node else ""
-                
-                # 進入內文
-                details = get_article_content(article_url)
-                if not details: continue
-                
-                # 時間篩選
-                if details['post_time'] < time_threshold:
-                    keep_scraping = False
-                    break 
-                
-                # --- 特徵計算 ---
-                post_time = details['post_time']
-                life_mins = (current_time - post_time).total_seconds() / 60
-                
-                # 推文加速度
-                accel = details['real_push_score'] / life_mins if life_mins > 1 else details['real_push_score']
-                accel = min(accel, CLIPPING_THRESHOLD)
-                
-                # 作者平均 (從快取讀取)
-                author_avg = author_history_cache.get(details['author'], 0.0)
-                
-                # 時間週期特徵
-                h = post_time.hour
-                
-                # 🚨 補回: 推噓比 (避免除以 0，若無噓文給予 1000 作為上限)
-                pb_ratio = details['push_count'] / details['boo_count'] if details['boo_count'] > 0 else 1000.0
-                
-                # 🚨 補回: 連結密度
-                word_count = details['content_word_count']
-                url_ratio = details['link_count'] / word_count if word_count > 0 else 0.0
+            sep = soup.find('div', class_='r-list-sep')
+            if sep:
+                divs = sep.find_all_previous('div', class_='r-ent')
+            
+            for div in divs[::-1]:
+                try:
+                    link = div.find('a')
+                    if not link: continue
+                    
+                    href = link['href']
+                    article_url = PTT_BASE_URL + href
+                    
+                    nrec_node = div.find('div', class_='nrec')
+                    nrec_tag = nrec_node.get_text().strip() if nrec_node else ""
+                    
+                    details = get_article_content(article_url)
+                    if not details: continue
 
-                articles_data.append({
-                    # 識別資訊
-                    'Post_ID': href.split('/')[-1].replace('.html', ''),
-                    'source_board': BOARD,
-                    'title': details['title'],
-                    'url': article_url,
-                    'author': details['author'],
-                    'crawl_time': crawl_time_str,
-                    'post_time': post_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    if details['title']:
+                        details['title'] = details['title'].replace(',', '_')
                     
-                    # 🚨 補回: 列表特徵
-                    'nrec_tag': nrec_tag,  # 例如 "爆", "XX", "10"
+                    if details['post_time'] < time_threshold:
+                        keep_scraping = False
+                        break 
                     
-                    # 🚨 補回: 內容分類與標題長度
-                    'category': get_article_category(details['title']),
-                    'title_char_count': len(details['title']),
+                    post_time = details['post_time']
+                    life_mins = (current_time - post_time).total_seconds() / 60
                     
-                    # 🚨 補回: 發文小時 (原始數值)
-                    'post_hour': h,
+                    accel = details['real_push_score'] / life_mins if life_mins > 1 else details['real_push_score']
+                    accel = min(accel, CLIPPING_THRESHOLD)
+                    
+                    author_avg = author_history_cache.get(details['author'], 0.0)
+                    h = post_time.hour
+                    pb_ratio = details['push_count'] / details['boo_count'] if details['boo_count'] > 0 else 1000.0
+                    word_count = details['content_word_count']
+                    url_ratio = details['link_count'] / word_count if word_count > 0 else 0.0
 
-                    # 數據統計
-                    'real_push_score': details['real_push_score'],
-                    'push_count': details['push_count'],
-                    'boo_count': details['boo_count'],
+                    articles_data.append({
+                        'Post_ID': href.split('/')[-1].replace('.html', ''),
+                        'source_board': BOARD,
+                        'title': details['title'],
+                        'url': article_url,
+                        'author': details['author'],
+                        'crawl_time': crawl_time_str,
+                        'post_time': post_time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'nrec_tag': nrec_tag,
+                        'category': get_article_category(details['title']),
+                        'title_char_count': len(details['title']),
+                        'post_hour': h,
+                        'real_push_score': details['real_push_score'],
+                        'push_count': details['push_count'],
+                        'boo_count': details['boo_count'],
+                        'life_minutes': round(life_mins, 2),
+                        'push_acceleration': round(accel, 4),
+                        'push_boo_ratio': round(pb_ratio, 4),
+                        'author_avg_push': round(author_avg, 2),
+                        'content_word_count': word_count,
+                        'content_url_ratio': round(url_ratio, 4),
+                        'q_mark_density': round(details['question_mark_count']/(word_count or 1), 4),
+                        'e_mark_density': round(details['exclamation_mark_count']/(word_count or 1), 4),
+                        'key_phrases': extract_key_phrases(details['clean_text']),
+                        'hour_sin': round(np.sin(2 * np.pi * h / 24), 4),
+                        'hour_cos': round(np.cos(2 * np.pi * h / 24), 4),
+                        'is_weekend': 1 if post_time.weekday() >= 5 else 0
+                    })
                     
-                    # 進階特徵
-                    'life_minutes': round(life_mins, 2),
-                    'push_acceleration': round(accel, 4),
-                    'push_boo_ratio': round(pb_ratio, 4), # 🚨 補回
-                    'author_avg_push': round(author_avg, 2),
-                    
-                    # 內容特徵
-                    'content_word_count': word_count,
-                    'content_url_ratio': round(url_ratio, 4), # 🚨 補回
-                    'q_mark_density': round(details['question_mark_count']/(word_count or 1), 4),
-                    'e_mark_density': round(details['exclamation_mark_count']/(word_count or 1), 4),
-                    'key_phrases': extract_key_phrases(details['clean_text']),
-                    
-                    # 時間週期 (Sin/Cos)
-                    'hour_sin': round(np.sin(2 * np.pi * h / 24), 4),
-                    'hour_cos': round(np.cos(2 * np.pi * h / 24), 4),
-                    'is_weekend': 1 if post_time.weekday() >= 5 else 0
-                })
-                
-            except Exception as e:
-                # log(f"處理文章錯誤: {e}") # 若有定義 log 函式可使用
-                continue
-        
-        if not keep_scraping: break
-        
-        # 換頁邏輯
-        btn = soup.find('div', class_='btn-group btn-group-paging')
-        prev = btn.find('a', string='‹ 上頁') if btn else None
-        if prev and 'href' in prev.attrs:
-            url = PTT_BASE_URL + prev['href']
+                except Exception as e:
+                    continue
+            
+            if not keep_scraping: break
+            
+            btn = soup.find('div', class_='btn-group btn-group-paging')
+            prev = btn.find('a', string='‹ 上頁') if btn else None
+            if prev and 'href' in prev.attrs:
+                url = PTT_BASE_URL + prev['href']
+            else:
+                break
+
+        # --- 檢查結果並決定是否重試 ---
+        if len(articles_data) > 0:
+            df = pd.DataFrame(articles_data)
+            # 1. (選用) 繼續存 CSV 當備份
+            date_str = current_time.strftime('%Y%m%d')
+            target_dir = os.path.join(DATA_DIR, date_str)
+            if not os.path.exists(target_dir): os.makedirs(target_dir)
+            fname = os.path.join(target_dir, f"ptt_snapshot_v2_{current_time.strftime('%Y%m%d_%H%M')}.csv")
+            df.to_csv(fname, index=False, encoding='utf-8-sig')
+            # 2. (核心) 存入資料庫
+            print("正在寫入資料庫...")
+            db_manager.insert_snapshot_df(df)
+            print(f"✅ 成功儲存 {len(df)} 筆資料至 DB 與 CSV")
+            return True, fname # fname 可以留著印 log，但後續邏輯改用 DB
         else:
-            break
-
-    # 存檔邏輯 (維持不變)
-    if articles_data:
-        df = pd.DataFrame(articles_data)
-        date_str = current_time.strftime('%Y%m%d')
-        target_dir = os.path.join(DATA_DIR, date_str)
-        if not os.path.exists(target_dir): os.makedirs(target_dir)
-        
-        fname = os.path.join(target_dir, f"ptt_snapshot_v2_{current_time.strftime('%Y%m%d_%H%M')}.csv")
-        df.to_csv(fname, index=False, encoding='utf-8-sig')
-        print(f"✅ 成功儲存 {len(df)} 筆資料至 {fname}")
-        return True
-    else:
-        print("⚠️ 無新資料")
-        return False
+            # 沒抓到資料，準備重試
+            retry_count += 1
+            if retry_count < max_retries:
+                print(f"⚠️ 警告: 本次爬取未獲得任何資料 (嘗試 {retry_count}/{max_retries})")
+                print("   -> 可能是連線不穩或被擋，休息 15 秒後重試...")
+                time.sleep(15)
+                # 重新初始化 scraper 以更換 session
+                global scraper
+                scraper = cloudscraper.create_scraper()
+            else:
+                print("❌ 錯誤: 重試多次仍無法獲取資料，跳過本次更新。")
+                return False, None
 
 if __name__ == '__main__':
     print(f"🚀 PTT 爆紅預測爬蟲 V2 (優化版) 已啟動")
     print(f"頻率: {INTERVAL_SECONDS/60} 分鐘 | 回溯: {REGULAR_LOOKBACK_HOURS} 小時")
     
-    # 1. 程式啟動時，先強制更新一次作者歷史數據
     print("⏳ 初始化：正在建立作者歷史數據庫...")
     author_history_cache = update_author_history_index()
     
     loop_count = 0
-    UPDATE_HISTORY_EVERY_N_LOOPS = 6 # 設定每跑幾次迴圈就更新一次歷史檔 (例如 6次 = 1小時)
+    UPDATE_HISTORY_EVERY_N_LOOPS = 6 
 
     while True:
         try:
-            # 2. 執行爬蟲，傳入目前的歷史數據
-            has_data = run_snapshot(author_history_cache)
+            # 🚨 修改: 接收新的回傳格式
+            has_data, new_file = run_snapshot(author_history_cache)
             
-            # 3. 定期更新歷史數據 (非每次，節省效能)
             loop_count += 1
             if loop_count >= UPDATE_HISTORY_EVERY_N_LOOPS:
                 print("🔄 定期更新作者歷史數據...")

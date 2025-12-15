@@ -9,7 +9,7 @@ from matplotlib import font_manager
 DATA_ROOT = 'data'
 # 🚨 請將此處替換為您要分析的實際「日期資料夾名稱」
 # 程式將會讀取 DATA_ROOT/TARGET_DATE_FOLDER/ 下的所有 CSV
-TARGET_DATE_FOLDER = '20251130' 
+TARGET_DATE_FOLDER = '20251210' 
 # 範例：如果您的資料路徑是 data/20251127/ptt_snapshot_v2_....csv，則保留 '20251127'
 
 def analyze_post_time(data_root, target_folder):
