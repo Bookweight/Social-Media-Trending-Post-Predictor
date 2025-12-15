@@ -85,3 +85,9 @@ uv run python adaptive_system.py
 ```
 
 專案中還有其他輔助腳本（例如 `train_model_lifecycle.py`, `ptt_post_time_analysis.py` 等），它們作為模組被 `adaptive_system.py` 調用，或者可以單獨執行進行特定的開發或分析工作。
+
+12/15 新增dashboard.py 展示數據:
+
+需先安裝pip install streamlit-autorefresh
+
+執行: uv run streamlit run dashboard.py ，會產生網頁視窗
