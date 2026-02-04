@@ -126,13 +126,18 @@ uv run streamlit run src/dashboard/dashboard.py
 Social-Media-Trending-Post-Predictor/
 ├── src/
 │   ├── analysis/          # 分析腳本
+│   │   ├── feature_engineering.py
+│   │   └── ptt_post_time_analysis.py
 │   ├── dashboard/         # 儀表板應用程式
 │   │   └── dashboard.py
 │   ├── data/              # 資料蒐集與儲存
+│   │   ├── db_manager.py
 │   │   └── ptt_monitor.py
 │   ├── features/          # 特徵工程
 │   │   └── feature_utils.py
 │   ├── model/             # 模型訓練邏輯
+│   │   ├── long_term_eval.py
+│   │   └── train_model_lifecycle.py
 │   └── main.py            # 程式主入口
 ├── data/                  # 資料儲存 (CSV 快照)
 ├── ptt_data.db            # SQLite 資料庫
