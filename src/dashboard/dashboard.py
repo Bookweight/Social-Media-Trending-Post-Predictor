@@ -7,12 +7,13 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # Import your database manager
-import db_manager
+# Import your database manager
+from src.data import db_manager
 
 # --- Page Config ---
 st.set_page_config(
     page_title="PTT Prediction Dashboard",
-    page_icon="🔮",
+    page_icon="icon",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -156,22 +157,22 @@ def load_comparison_data(pred_time):
     return df_pred, df_real, real_timestamp
 
 # --- Sidebar ---
-st.sidebar.title("🎛️ Control Panel")
+st.sidebar.title("Control Panel")
 now = datetime.now()
-st.sidebar.markdown(f"### 🕒 Time\n## {now.strftime('%H:%M')}")
+st.sidebar.markdown(f"### Time\n## {now.strftime('%H:%M')}")
 st.sidebar.caption(f"{now.strftime('%Y-%m-%d')}")
 
 df_log = load_pred_log()
 
 if not df_log.empty:
     st.sidebar.divider()
-    st.sidebar.subheader("📅 History")
+    st.sidebar.subheader("History")
     available_times = df_log['timestamp'].sort_values(ascending=False).tolist()
     selected_time = st.sidebar.selectbox("Select Time", available_times, format_func=lambda x: x.strftime('%m/%d %H:%M'))
     
     if selected_time:
         rec = df_log[df_log['timestamp'] == selected_time].iloc[0]
-        st.sidebar.markdown("### 📊 Metrics")
+        st.sidebar.markdown("### Metrics")
         c1, c2 = st.sidebar.columns(2)
         c1.metric("NDCG", f"{rec['model_ndcg']:.3f}")
         c2.metric("Lift", f"{rec['lift_percent']:+.1f}%", delta_color="normal" if rec['lift_percent']>0 else "inverse")
@@ -181,10 +182,10 @@ else:
     st.stop()
 
 # --- Main Page ---
-st.title("🔮 PTT Popularity Prediction System")
+st.title("PTT Popularity Prediction System")
 
 # 1. Chart (Optimized) - Full History & Vivid Colors
-st.markdown("<div class='section-header'><h3>📈 Performance Trend</h3></div>", unsafe_allow_html=True)
+st.markdown("<div class='section-header'><h3>Performance Trend</h3></div>", unsafe_allow_html=True)
 
 if not df_log.empty:
     # 定義鮮豔的色票給各個模型版本 (避開綠色，因為綠色留給 Baseline)
@@ -269,7 +270,7 @@ else:
     st.info("No historical data available to plot.")
 
 # 2. Prediction vs Reality
-st.markdown("<div class='section-header'><h3>🔍 Forecast vs Reality (T+120min)</h3></div>", unsafe_allow_html=True)
+st.markdown("<div class='section-header'><h3>Forecast vs Reality (T+120min)</h3></div>", unsafe_allow_html=True)
 
 if selected_time:
     df_pred, df_real, real_ts = load_comparison_data(selected_time)
@@ -285,7 +286,7 @@ if selected_time:
             has_future = True
         else:
             top_real = []
-            real_txt = "⏳ Data not available yet"
+            real_txt = "Data not available yet"
             has_future = False
 
         real_rank_map = {row['url']: idx+1 for idx, row in enumerate(top_real)}
@@ -294,7 +295,7 @@ if selected_time:
         col_l, col_r = st.columns(2)
         
         with col_l:
-            st.subheader("🤖 AI Prediction (T)")
+            st.subheader("AI Prediction (T)")
             st.caption(f"Forecast at {selected_time.strftime('%H:%M')}")
             for i, row in enumerate(top_pred):
                 url = row['url']
@@ -305,7 +306,7 @@ if selected_time:
                 bg = "#f8f9fa" # Grey
                 border = "#dee2e6" # Grey
                 bw = "2px"
-                move_html = "<span style='color:#999; font-size:12px;'>❌ Prediction Failed</span>"
+                move_html = "<span style='color:#999; font-size:12px;'>Prediction Failed</span>"
                 
                 # Hit Style
                 if is_hit:
@@ -313,9 +314,9 @@ if selected_time:
                     border = "#198754" # Green
                     bw = "8px"
                     if (i+1) == real_rank: 
-                        move_html = "<span class='rank-movement' style='color:#198754;'>✅ Exact Match</span>"
+                        move_html = "<span class='rank-movement' style='color:#198754;'>Exact Match</span>"
                     else: 
-                        move_html = f"<span class='rank-movement' style='color:#198754;'>➡️ Actual #{real_rank}</span>"
+                        move_html = f"<span class='rank-movement' style='color:#198754;'>Actual #{real_rank}</span>"
                 
                 acc = row.get('push_acceleration', 0.0)
                 
@@ -336,7 +337,7 @@ if selected_time:
                 """, unsafe_allow_html=True)
 
         with col_r:
-            st.subheader("🔥 Reality (T+120m)")
+            st.subheader("Reality (T+120m)")
             st.caption(real_txt)
             if has_future:
                 for i, row in enumerate(top_real):
@@ -348,14 +349,14 @@ if selected_time:
                     bg = "#f8f9fa"
                     border = "#dee2e6"
                     bw = "2px"
-                    move_html = "<span style='color:#999; font-size:12px;'>🆕 Unpredicted</span>"
+                    move_html = "<span style='color:#999; font-size:12px;'>Unpredicted</span>"
                     
                     # Hit Style
                     if is_hit:
                         bg = "#ffffff"
                         border = "#198754"
                         bw = "8px"
-                        move_html = f"<span class='rank-movement' style='color:#198754;'>✨ AI Predicted #{pred_rank}</span>"
+                        move_html = f"<span class='rank-movement' style='color:#198754;'>AI Predicted #{pred_rank}</span>"
                         
                     st.markdown(f"""
                     <div class="metric-card" style="background-color: {bg}; border-left: {bw} solid {border};">

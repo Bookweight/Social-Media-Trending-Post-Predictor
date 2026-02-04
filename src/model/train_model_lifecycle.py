@@ -8,9 +8,9 @@ import math
 import gc
 import re
 from datetime import datetime, timedelta
-import feature_utils
+from src.features import feature_utils
 
-import db_manager
+from src.data import db_manager
 
 # --- 設定與參數 ---
 DATA_DIR = 'data'
@@ -29,7 +29,7 @@ def parse_file_time(filepath):
     return None
 
 def load_recent_data(days_back=7):
-    print(f"📂 正在從資料庫讀取最近 {days_back} 天的資料...")
+    print(f"正在從資料庫讀取最近 {days_back} 天的資料...")
     
     end_time = datetime.now()
     start_time = end_time - timedelta(days=days_back)
@@ -37,11 +37,11 @@ def load_recent_data(days_back=7):
     # 直接用 SQL 篩選，速度快非常多
     df = db_manager.query_snapshots_by_time_range(start_time, end_time)
     
-    print(f"✅ 載入完成！總資料列數: {len(df)}")
+    print(f"載入完成！總資料列數: {len(df)}")
     return df
 
 def create_lifecycle_dataset(df):
-    print(f"🔄 執行生命週期配對 (T+{LOOK_AHEAD_MINUTES}min)...")
+    print(f"執行生命週期配對 (T+{LOOK_AHEAD_MINUTES}min)...")
     
     # 1. 建立「未來」標籤 (T+60)
     df['target_lookup_time'] = df['crawl_time'] + pd.Timedelta(minutes=LOOK_AHEAD_MINUTES)
@@ -60,7 +60,7 @@ def create_lifecycle_dataset(df):
     )
     
     # 2. 建立「過去」特徵 (T-10)
-    print(f"🔄 執行瞬時動能配對 (T-{VELOCITY_DELTA_MINUTES}min)...")
+    print(f"執行瞬時動能配對 (T-{VELOCITY_DELTA_MINUTES}min)...")
     merged['velocity_lookup_time'] = merged['crawl_time'] - pd.Timedelta(minutes=VELOCITY_DELTA_MINUTES)
     
     df_past = df[['Post_ID', 'crawl_time', 'push_count']].copy()
@@ -89,7 +89,7 @@ def create_lifecycle_dataset(df):
     return valid_data
 
 def prepare_data_for_train(df):
-    print("🛠️ 正在生成訓練特徵...")
+    print("正在生成訓練特徵...")
     
     # 🚨 [修正] 直接將包含 _prev 欄位的 df 傳入
     # feature_utils 會自動偵測並使用這些欄位，不會觸發 merge，避免爆炸
@@ -106,14 +106,16 @@ def prepare_data_for_train(df):
 
 def run_training_pipeline(days_back=7):
     print("\n" + "="*50)
-    print(f"🏋️‍♂️ 啟動模型重訓流程 (資料範圍: 近 {days_back} 天)")
+    print(f"啟動模型重訓流程 (資料範圍: 近 {days_back} 天)")
     print("="*50)
     
     full_df = load_recent_data(days_back)
     if full_df.empty: return False
     
     dataset = create_lifecycle_dataset(full_df)
-    if dataset.empty: return False
+    if dataset.empty or len(dataset) < 50:
+        print("資料量不足 (少於 50 筆配對資料)，跳過訓練")
+        return False
 
     n = len(dataset)
     train_end = int(n * 0.8)
@@ -121,11 +123,11 @@ def run_training_pipeline(days_back=7):
     df_train = dataset.iloc[:train_end].copy()
     df_val = dataset.iloc[train_end:].copy()
     
-    print(f"📊 樣本數: Train={len(df_train)}, Val={len(df_val)}")
+    print(f"樣本數: Train={len(df_train)}, Val={len(df_val)}")
     
     X_train, y_train, g_train = prepare_data_for_train(df_train)
     X_val, y_val, g_val = prepare_data_for_train(df_val)
-    print("🧠 開始訓練 LightGBM (Full Retrain)...")
+    print("開始訓練 LightGBM (Full Retrain)...")
     
     # 🆕 定義權重階梯 (0~30級)
     custom_label_gain = [2**i - 1 for i in range(31)]
@@ -155,14 +157,14 @@ def run_training_pipeline(days_back=7):
     )
     
     gbm.booster_.save_model(MODEL_OUTPUT)
-    print(f"💾 重訓完成！模型已儲存至 {MODEL_OUTPUT}")
+    print(f"重訓完成！模型已儲存至 {MODEL_OUTPUT}")
     
     # 顯示新特徵的重要性
     imp = pd.DataFrame({
         'feature': X_train.columns,
         'gain': gbm.feature_importances_
     }).sort_values('gain', ascending=False)
-    print("\n🏆 新模型特徵重要性 (Top 10):")
+    print("\n新模型特徵重要性 (Top 10):")
     print(imp.head(10))
     
     del X_train, y_train, X_val, y_val

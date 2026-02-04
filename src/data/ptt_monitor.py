@@ -11,7 +11,7 @@ import glob
 import jieba.analyse
 import numpy as np
 
-import db_manager
+from src.data import db_manager
 
 # --- 1. 配置與設定 ---
 BOARD = 'Gossiping'
@@ -51,7 +51,7 @@ def log(msg):
 # --- 2. 數據讀取與輔助函式 ---
 
 def update_author_history_index():
-    print("🔄 正在更新作者歷史數據索引...")
+    print("正在更新作者歷史數據索引...")
     
     all_csv_files = glob.glob(os.path.join(DATA_DIR, '**', '*.csv'), recursive=True)
     history_file_abs = os.path.abspath(AUTHOR_HISTORY_FILE)
@@ -62,7 +62,7 @@ def update_author_history_index():
             target_files.append(f)
             
     if not target_files:
-        print("⚠️ 無原始歷史資料可更新。")
+        print("無原始歷史資料可更新。")
         return {}
 
     df_list = []
@@ -95,7 +95,7 @@ def update_author_history_index():
     final_df = author_stats[['author', 'author_avg_push']]
     final_df.to_csv(AUTHOR_HISTORY_FILE, index=False, encoding='utf-8-sig')
     
-    print(f"✅ 作者歷史索引已更新 (含貝式平滑)，全站平均: {global_mean:.2f}")
+    print(f"作者歷史索引已更新 (含貝式平滑)，全站平均: {global_mean:.2f}")
     
     return final_df.set_index('author')['author_avg_push'].to_dict()
 
@@ -105,7 +105,7 @@ def load_author_history():
             df = pd.read_csv(AUTHOR_HISTORY_FILE)
             return df.set_index('author')['author_avg_push'].to_dict()
         except Exception as e:
-            print(f"⚠️ 讀取歷史索引檔失敗: {e}，嘗試重新計算...")
+            print(f"讀取歷史索引檔失敗: {e}，嘗試重新計算...")
             return update_author_history_index()
     else:
         return update_author_history_index()
@@ -117,10 +117,10 @@ def get_soup(url):
         if resp.status_code == 200:
             return BeautifulSoup(resp.text, 'html.parser')
         elif resp.status_code == 403:
-            log("⚠️ Cloudflare 403 Forbidden")
+            log("Cloudflare 403 Forbidden")
         return None
     except Exception as e:
-        log(f"❌ 連線錯誤: {e}")
+        log(f"連線錯誤: {e}")
         return None
 
 def extract_key_phrases(text, topK=5):
@@ -303,27 +303,27 @@ def run_snapshot(author_history_cache):
             # 2. (核心) 存入資料庫
             print("正在寫入資料庫...")
             db_manager.insert_snapshot_df(df)
-            print(f"✅ 成功儲存 {len(df)} 筆資料至 DB 與 CSV")
+            print(f"成功儲存 {len(df)} 筆資料至 DB 與 CSV")
             return True, fname # fname 可以留著印 log，但後續邏輯改用 DB
         else:
             # 沒抓到資料，準備重試
             retry_count += 1
             if retry_count < max_retries:
-                print(f"⚠️ 警告: 本次爬取未獲得任何資料 (嘗試 {retry_count}/{max_retries})")
+                print(f"警告: 本次爬取未獲得任何資料 (嘗試 {retry_count}/{max_retries})")
                 print("   -> 可能是連線不穩或被擋，休息 15 秒後重試...")
                 time.sleep(15)
                 # 重新初始化 scraper 以更換 session
                 global scraper
                 scraper = cloudscraper.create_scraper()
             else:
-                print("❌ 錯誤: 重試多次仍無法獲取資料，跳過本次更新。")
+                print("錯誤: 重試多次仍無法獲取資料，跳過本次更新。")
                 return False, None
 
 if __name__ == '__main__':
-    print(f"🚀 PTT 爆紅預測爬蟲 V2 (優化版) 已啟動")
+    print(f"PTT 爆紅預測爬蟲 V2 (優化版) 已啟動")
     print(f"頻率: {INTERVAL_SECONDS/60} 分鐘 | 回溯: {REGULAR_LOOKBACK_HOURS} 小時")
     
-    print("⏳ 初始化：正在建立作者歷史數據庫...")
+    print("初始化：正在建立作者歷史數據庫...")
     author_history_cache = update_author_history_index()
     
     loop_count = 0
@@ -336,17 +336,17 @@ if __name__ == '__main__':
             
             loop_count += 1
             if loop_count >= UPDATE_HISTORY_EVERY_N_LOOPS:
-                print("🔄 定期更新作者歷史數據...")
+                print("定期更新作者歷史數據...")
                 author_history_cache = update_author_history_index()
                 loop_count = 0
             
             next_run = datetime.now() + timedelta(seconds=INTERVAL_SECONDS)
-            print(f"😴 休眠中... 下次執行: {next_run.strftime('%H:%M:%S')}\n")
+            print(f"休眠中... 下次執行: {next_run.strftime('%H:%M:%S')}\n")
             time.sleep(INTERVAL_SECONDS)
             
         except KeyboardInterrupt:
-            print("\n🛑 停止。")
+            print("\n停止。")
             break
         except Exception as e:
-            print(f"\n❌ 錯誤: {e}")
+            print(f"\n錯誤: {e}")
             time.sleep(60)

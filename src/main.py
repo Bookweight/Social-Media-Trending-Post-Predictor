@@ -11,10 +11,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # 引入模組
-import ptt_moniter 
-import feature_utils 
-import train_model_lifecycle
-import db_manager  # 引入資料庫模組
+from src.data import ptt_monitor 
+from src.features import feature_utils 
+from src.model import train_model_lifecycle
+from src.data import db_manager  # 引入資料庫模組
 
 # --- 設定 ---
 MODEL_FILE = 'ptt_lifecycle_model.txt'
@@ -37,7 +37,7 @@ def increment_version():
     v = get_current_version() + 1
     with open(VERSION_FILE, 'w') as f:
         f.write(str(v))
-    print(f"🆙 模型版本已升級為 v{v}")
+    print(f"模型版本已升級為 v{v}")
     return v
 
 # 🆕 [DB] 從資料庫讀取最新快照
@@ -105,7 +105,7 @@ def log_prediction_performance(timestamp, model_metrics, base_metrics, stage="ad
             f"{base_metrics['ndcg']:.4f}",
             f"{lift:+.2f}%"
         ])
-    print(f"📝 績效已記錄至 {PRED_LOG_FILE} (Lift: {lift:+.2f}%)")
+    print(f"績效已記錄至 {PRED_LOG_FILE} (Lift: {lift:+.2f}%)")
 
 def print_side_by_side(list_a, list_b, title_a, title_b):
     print("-" * 95)
@@ -168,7 +168,7 @@ def save_feature_importance_plot(model, timestamp):
         plt.savefig(save_path, dpi=300)
         plt.close()
     except Exception as e:
-        print(f"⚠️ 繪圖失敗: {e}")
+        print(f"繪圖失敗: {e}")
 
 def calculate_dynamic_weight(df):
     """根據全站推文總量 (流量) 決定 AI 的權重"""
@@ -183,14 +183,14 @@ def calculate_dynamic_weight(df):
     sigmoid = 1 / (1 + np.exp(-(avg_push - 10) / 3))
     weight = 0.3 + (0.6 * sigmoid)
     
-    print(f"⚖️ [動態權重] 全站平均推文: {avg_push:.1f} -> AI 權重: {weight:.2f}")
+    print(f"[動態權重] 全站平均推文: {avg_push:.1f} -> AI 權重: {weight:.2f}")
     return weight
 
 # 🆕 [DB] 預測邏輯 (接收 DataFrame 和 時間)
 def predict_future_rank(df, current_time, model):
     if df.empty: return
 
-    print(f"\n🔮 [預測模式] 資料時間: {current_time.strftime('%Y-%m-%d %H:%M')}")
+    print(f"\n[預測模式] 資料時間: {current_time.strftime('%Y-%m-%d %H:%M')}")
     
     # 1. 從 DB 找 T-10 資料 (計算動能)
     target_prev_time = current_time - timedelta(minutes=VELOCITY_DELTA_MINUTES)
@@ -199,7 +199,7 @@ def predict_future_rank(df, current_time, model):
     if df_prev is not None and not df_prev.empty:
         print("   -> 成功載入 T-10min 資料以計算瞬時動能")
     else:
-        print("   -> ⚠️ 無法載入 T-10min 資料 (可能剛啟動)，動能特徵將使用預設值")
+        print("   -> 無法載入 T-10min 資料 (可能剛啟動)，動能特徵將使用預設值")
 
     # 2. 準備特徵
     X = feature_utils.prepare_features_for_model(df, df_prev)
@@ -216,11 +216,11 @@ def predict_future_rank(df, current_time, model):
     top_pred['score_val'] = top_pred['pred_score']
     top_curr = df.sort_values('push_count', ascending=False).head(10).copy()
     
-    print(f"🚀 預測 {LOOK_AHEAD_MINUTES} 分鐘後的趨勢分析")
+    print(f"預測 {LOOK_AHEAD_MINUTES} 分鐘後的趨勢分析")
     print_side_by_side(
         top_pred, top_curr, 
-        f"🤖 AI 預測排名 (權重 {w:.2f})", 
-        f"🔥 目前實際排名 (當下熱度)"
+        f"AI 預測排名 (權重 {w:.2f})", 
+        f"目前實際排名 (當下熱度)"
     )
 
 # 🆕 [DB] 學習邏輯
@@ -230,10 +230,10 @@ def adaptive_learning(df_now, current_time, model, stage_label):
     df_past, real_past_time = db_manager.query_nearest_snapshot(target_time_verify, tolerance_seconds=1800)
     
     if df_past is None or df_past.empty:
-        print(f"⚠️ 資料庫中找不到 T-{LOOK_AHEAD_MINUTES} 分鐘前的資料，跳過驗證")
+        print(f"資料庫中找不到 T-{LOOK_AHEAD_MINUTES} 分鐘前的資料，跳過驗證")
         return model
 
-    print(f"\n🧠 [學習模式] 回溯驗證: {real_past_time.strftime('%H:%M')} -> {current_time.strftime('%H:%M')}")
+    print(f"\n[學習模式] 回溯驗證: {real_past_time.strftime('%H:%M')} -> {current_time.strftime('%H:%M')}")
 
     # 2. 從 DB 找 T-130 (過去的過去，為了算當時的速度)
     target_time_velocity = real_past_time - timedelta(minutes=VELOCITY_DELTA_MINUTES)
@@ -299,7 +299,7 @@ def adaptive_learning(df_now, current_time, model, stage_label):
         lift_vel = (model_ndcg_10 - vel_ndcg_10) / vel_ndcg_10 * 100
 
     # 6. 輸出結果
-    print(f"📊 驗證成效比較 (Hybrid):")
+    print(f"驗證成效比較 (Hybrid):")
     print(f"   - 混合模型 : NDCG@10={model_ndcg_10:.4f}, Lift(v.s.笨蛋)={lift_base:+.2f}%")
     print(f"   - 笨蛋基準 : NDCG@10={base_ndcg_10:.4f}")
     print(f"   - 動能基準 : NDCG@10={vel_ndcg_10:.4f} | AI v.s. 動能: {lift_vel:+.2f}%")
@@ -319,8 +319,8 @@ def adaptive_learning(df_now, current_time, model, stage_label):
     
     print_side_by_side(
         top_past_pred, top_now_real,
-        f"🤖 {LOOK_AHEAD_MINUTES}分前 混合預測 (w={w:.2f})",
-        f"✅ {LOOK_AHEAD_MINUTES}分後 真實結果"
+        f"{LOOK_AHEAD_MINUTES}分前 混合預測 (w={w:.2f})",
+        f"{LOOK_AHEAD_MINUTES}分後 真實結果"
     )
 
     # 4. 增量訓練
@@ -336,12 +336,12 @@ def adaptive_learning(df_now, current_time, model, stage_label):
     
     new_model = lgb.train(params, lgb_train, num_boost_round=10, init_model=model, keep_training_booster=True)
     new_model.save_model(MODEL_FILE)
-    print("💾 模型已微調並存檔")
+    print("模型已微調並存檔")
     
     return new_model
 
 def smart_start_wait():
-    print("🕵️‍♂️ [系統檢查] 偵測資料庫新鮮度...")
+    print("[系統檢查] 偵測資料庫新鮮度...")
     df_last, last_time = load_latest_snapshot_from_db()
     
     if last_time is None:
@@ -350,43 +350,47 @@ def smart_start_wait():
 
     current_time = datetime.now()
     elapsed_seconds = (current_time - last_time).total_seconds()
-    interval = ptt_moniter.INTERVAL_SECONDS
+    interval = ptt_monitor.INTERVAL_SECONDS
     
     if 0 <= elapsed_seconds < interval:
         wait_seconds = interval - elapsed_seconds + 5 
-        print(f"✅ 最新資料 ({last_time.strftime('%H:%M')}) 僅在 {elapsed_seconds/60:.1f} 分鐘前產生。")
-        print(f"⏳ 為避免重複爬取，系統將休眠 {wait_seconds:.0f} 秒...")
+        print(f"最新資料 ({last_time.strftime('%H:%M')}) 僅在 {elapsed_seconds/60:.1f} 分鐘前產生。")
+        print(f"為避免重複爬取，系統將休眠 {wait_seconds:.0f} 秒...")
         try:
             time.sleep(wait_seconds)
         except KeyboardInterrupt:
             exit()
     else:
-        print(f"⚡ 最新資料已是 {elapsed_seconds/60:.1f} 分鐘前，立即啟動爬蟲！")
+        print(f"最新資料已是 {elapsed_seconds/60:.1f} 分鐘前，立即啟動爬蟲！")
 
 def main_loop():
-    print("🚀 PTT 自適應預測系統啟動 (資料庫版 + 動態防禦)")
+    print("PTT 自適應預測系統啟動 (資料庫版 + 動態防禦)")
     
     # 確保資料庫初始化
     if not os.path.exists(db_manager.DB_NAME):
         db_manager.init_db()
 
     if os.path.exists(MODEL_FILE):
-        print("📂 載入現有模型...")
+        print("載入現有模型...")
         model = lgb.Booster(model_file=MODEL_FILE)
     else:
-        print("❌ 找不到模型，執行初始化訓練...")
+        print("找不到模型，執行初始化訓練...")
         # 注意: 這裡 train_model_lifecycle 也需要更新為支援 DB 的版本
-        train_model_lifecycle.run_training_pipeline(days_back=3)
-        model = lgb.Booster(model_file=MODEL_FILE)
+        success = train_model_lifecycle.run_training_pipeline(days_back=3)
+        if success and os.path.exists(MODEL_FILE):
+            model = lgb.Booster(model_file=MODEL_FILE)
+        else:
+            print("初始化訓練失敗(可能無資料)，進入純爬蟲模式...")
+            model = None
 
-    author_cache = ptt_moniter.load_author_history()
+    author_cache = ptt_monitor.load_author_history()
     last_plot_hour = -1
     SCHEDULED_HOURS = [0, 6, 12, 18]
     
     last_retrain_time = datetime.now()
     RETRAIN_INTERVAL = timedelta(hours=24) 
     model_version = get_current_version()
-    print(f"🔢 目前模型版本: v{model_version}")
+    print(f"目前模型版本: v{model_version}")
 
     smart_start_wait()
 
@@ -398,7 +402,7 @@ def main_loop():
             # --- 重訓檢查 ---
             time_since_retrain = datetime.now() - last_retrain_time
             if time_since_retrain > RETRAIN_INTERVAL:
-                print(f"⏰ 已距離上次重訓 {time_since_retrain}，開始執行每日重訓...")
+                print(f"已距離上次重訓 {time_since_retrain}，開始執行每日重訓...")
                 success = train_model_lifecycle.run_training_pipeline(days_back=7)
                 if success:
                     model = lgb.Booster(model_file=MODEL_FILE)
@@ -406,38 +410,49 @@ def main_loop():
                     model_version = increment_version()
             
             # 1. 爬蟲 (會自動寫入 DB)
-            has_data, _ = ptt_moniter.run_snapshot(author_cache)
+            has_data, _ = ptt_monitor.run_snapshot(author_cache)
             
             # 2. 從 DB 讀取
             df_now, current_time = load_latest_snapshot_from_db()
             
             if df_now is not None:
                 # ... (預測、學習、繪圖邏輯保持不變) ...
-                predict_future_rank(df_now, current_time, model)
-                if has_data:
-                    model = adaptive_learning(df_now, current_time, model, stage_label=f"adaptive_v{model_version}")
+                if model:
+                    predict_future_rank(df_now, current_time, model)
+                    if has_data:
+                        model = adaptive_learning(df_now, current_time, model, stage_label=f"adaptive_v{model_version}")
+                else:
+                    print("尚無模型，跳過預測階段。")
+                    # 嘗試補救訓練
+                    if has_data: # 如果剛抓到資料，試著訓練看看
+                         time_since_retrain = datetime.now() - last_retrain_time
+                         if time_since_retrain > timedelta(minutes=10): # 不要太頻繁
+                             print("嘗試從新資料訓練模型...")
+                             if train_model_lifecycle.run_training_pipeline(days_back=3):
+                                 model = lgb.Booster(model_file=MODEL_FILE)
+                                 last_retrain_time = datetime.now()
                 # ...
             else:
-                print("❌ 資料庫讀取失敗或無資料")
+                print("資料庫讀取失敗或無資料")
             
             # 3. 計算下一輪的目標時間 (Fixed Rate Scheduling)
-            target_next_time = cycle_start_time + timedelta(seconds=ptt_moniter.INTERVAL_SECONDS)
+            target_next_time = cycle_start_time + timedelta(seconds=ptt_monitor.INTERVAL_SECONDS)
             now = datetime.now()
             sleep_seconds = (target_next_time - now).total_seconds()
             
             if sleep_seconds > 0:
-                print(f"✅ 本輪耗時: {(now - cycle_start_time).total_seconds():.1f} 秒")
-                print(f"😴 等待中... 下次執行: {target_next_time.strftime('%H:%M:%S')}")
+                print(f"本輪耗時: {(now - cycle_start_time).total_seconds():.1f} 秒")
+                print(f"等待中... 下次執行: {target_next_time.strftime('%H:%M:%S')}")
                 time.sleep(sleep_seconds)
             else:
-                print(f"⚠️ 警告: 本輪耗時過長 ({(now - cycle_start_time).total_seconds():.1f} 秒)，立即啟動下一輪！")
+                print(f"警告: 本輪耗時過長 ({(now - cycle_start_time).total_seconds():.1f} 秒)，立即啟動下一輪！")
                 # 不睡覺，直接趕進度
 
         except KeyboardInterrupt:
-            print("🛑 停止")
+            print("停止")
             break
         except Exception as e:
-            print(f"❌ 錯誤: {e}")
+            print(f"錯誤: {e}")
             import traceback
             traceback.print_exc()
             time.sleep(60) # 出錯時休息一下

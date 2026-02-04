@@ -135,6 +135,38 @@ def query_nearest_snapshot(target_time, tolerance_seconds=900):
     df_result = df[df['crawl_time'] == best_time].copy()
     return df_result, best_time
 
+def query_latest_snapshot():
+    conn = get_conn()
+    try:
+        # 1. 先查最新的時間點
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(crawl_time) FROM snapshots")
+        result = cursor.fetchone()
+        
+        if result is None or result[0] is None:
+            return None, None
+            
+        latest_time_str = result[0]
+        
+        # 2. 再抓該時間點的所有資料
+        query = "SELECT * FROM snapshots WHERE crawl_time = ?"
+        df = pd.read_sql(query, conn, params=(latest_time_str,))
+        
+        if df.empty:
+            return None, None
+            
+        df['crawl_time'] = pd.to_datetime(df['crawl_time'])
+        if 'post_time' in df.columns:
+            df['post_time'] = pd.to_datetime(df['post_time'])
+            
+        return df, pd.to_datetime(latest_time_str)
+        
+    except Exception as e:
+        print(f"Query Error: {e}")
+        return None, None
+    finally:
+        conn.close()
+
 # 初始化檢查
 if not os.path.exists(DB_NAME):
     init_db()

@@ -12,7 +12,7 @@ NUMERIC_COLS = [
     'hour_sin', 'hour_cos', 'is_weekend',
     'is_morning', 'is_noon', 'is_afternoon', 'is_evening', 'is_night',
     'title_hot_score', 
-    'push_velocity' # 🆕 新增: 10分鐘瞬時速度
+    'push_velocity' # 新增: 10分鐘瞬時速度
 ]
 CAT_COLS = ['category', 'source_board']
 

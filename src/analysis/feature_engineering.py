@@ -15,9 +15,9 @@ TARGET_DELTA_MINUTES = 60
 TOP_N_KEYWORDS = 300 
 # Target Encoding 用的平滑係數 (用於防止低頻詞過度編碼)
 SMOOTHING_ALPHA = 100 
-# 🚀 優化: push_boo_ratio 的截斷上限 (取代除以零的 1000.0 佔位符)
+# 優化: push_boo_ratio 的截斷上限 (取代除以零的 1000.0 佔位符)
 MAX_PUSH_BOO_RATIO_CLIP = 500.0 
-# 🚀 新增: push_acceleration 的截斷上限 (防止極端加速值)
+# 新增: push_acceleration 的截斷上限 (防止極端加速值)
 MAX_PUSH_ACCELERATION_CLIP = 5.0 
 
 # --- 2. 數據加載與預處理核心功能 ---
@@ -38,7 +38,7 @@ def load_and_prepare_data(data_root):
                     filepath = os.path.join(date_path, filename)
                     try:
                         df = pd.read_csv(filepath)
-                        # 🚀 更新: 確保所有用於清洗和特徵工程的欄位都被載入
+                        # 更新: 確保所有用於清洗和特徵工程的欄位都被載入
                         required_cols = ['Post_ID', 'crawl_time', 'post_time', 'real_push_score', 'key_phrases', 
                                          'push_count', 'boo_count', 'push_boo_ratio', 'push_acceleration', 'author_avg_push']
                         if not all(col in df.columns for col in required_cols):
@@ -101,7 +101,7 @@ def clean_data(df, max_ratio_clip, max_acceleration_clip):
 
 def calculate_target_delta(df, delta_minutes):
     """
-    🚀 優化: 使用 groupby().apply() 在組內進行高效篩選，取代在整個 DF 上重複查詢。
+    優化: 使用 groupby().apply() 在組內進行高效篩選，取代在整個 DF 上重複查詢。
     計算文章在 'delta_minutes' 後的推文分數增量 (Delta Push Score)。
     """
     print("  [優化中] 正在計算目標變量 (Delta Push Score)...")
@@ -167,7 +167,7 @@ def get_global_vocabulary(df):
 def create_keyword_features(df, most_common_keywords):
     """
     創建兩種關鍵詞特徵：One-Hot 稀疏特徵 和 Target Encoding 特徵。
-    🚀 優化: 使用 MultiLabelBinarizer 進行 One-Hot Encoding。
+    優化: 使用 MultiLabelBinarizer 進行 One-Hot Encoding。
     """
     # -----------------------------------------------------------
     print("\n--- 3.1 關鍵詞 One-Hot Encoding (Top N, 向量化) ---")
@@ -213,7 +213,7 @@ def create_keyword_features(df, most_common_keywords):
         
         # 1. 在訓練集上建立 Keyword -> Target 映射
         
-        # 🚀 優化: 使用 explode/groupby/agg 進行 Target 統計
+        # 優化: 使用 explode/groupby/agg 進行 Target 統計
         temp_train = df_train[['keywords_list', 'target_score']].explode('keywords_list')
         kw_stats = temp_train.groupby('keywords_list')['target_score'].agg(['count', 'mean']).reset_index()
         
@@ -249,14 +249,14 @@ if __name__ == '__main__':
     
     # 為了讓腳本能運行，我們在沒有完整資料夾結構時，先使用提供的單一CSV作為模擬數據
     if not os.path.exists(DATA_ROOT) or not any(os.path.isdir(os.path.join(DATA_ROOT, d)) for d in os.listdir(DATA_ROOT)):
-        print("🚨 警告: 缺少 data/日期/ 結構。使用單一上傳檔案進行模擬。")
+        print("警告: 缺少 data/日期/ 結構。使用單一上傳檔案進行模擬。")
         try:
             # 使用用戶提供的 ptt_snapshot_v2_20251127_0042.csv 作為測試數據
             df = pd.read_csv('ptt_snapshot_v2_20251127_0042.csv')
             df['crawl_time'] = pd.to_datetime(df['crawl_time'])
             df['snapshot_id'] = df['crawl_time'].astype(str) # 模擬 Group ID
         except FileNotFoundError:
-            print("❌ 錯誤: 找不到提供的 CSV 檔案。無法繼續。")
+            print("錯誤: 找不到提供的 CSV 檔案。無法繼續。")
             df = pd.DataFrame()
     else:
         df = load_and_prepare_data(DATA_ROOT)
@@ -266,7 +266,7 @@ if __name__ == '__main__':
     else:
         print(f"總共載入 {len(df)} 筆快照記錄。")
         
-        # 🚀 執行數據清洗
+        # 執行數據清洗
         df_cleaned = clean_data(df, MAX_PUSH_BOO_RATIO_CLIP, MAX_PUSH_ACCELERATION_CLIP)
 
         # Step 2: 計算 Target (Delta Push Score)
