@@ -12,9 +12,19 @@
 
 這個專案是一個 PTT（批踢踢實業坊）資料分析與自適應預測系統，其核心 `src/main.py` (原 `adaptive_system.py`) 腳本負責持續進行資料爬取、實時預測熱門文章，並透過機器學習模型進行自適應學習與優化。
 
+## 功能與特點
+
+- **即時爬取**: 持續監控 PTT 看板（如 Gossiping）的新文章與更新。
+- **自適應預測**: 使用 LightGBM 預測文章未來的熱門程度（推文數）。
+- **動態學習**: 系統會根據新資料重新自我訓練，以適應變化的趨勢。
+- **Dashboard**: 使用 Streamlit 視覺化資料與預測結果。
+
 ## 資料說明
 
 專案中的 CSV 檔案（例如 `data/20251212/ptt_snapshot_v2_20251212_2321.csv`）包含了 PTT 文章的快照資料，其欄位含義如下：
+
+<details>
+<summary>點擊展開詳細資料欄位說明</summary>
 
 - `Post_ID`: 文章的唯一識別碼。
 - `source_board`: 文章來源的看板名稱 (例如：Gossiping)。
@@ -42,6 +52,8 @@
 - `hour_sin`: 小時數的正弦轉換（用於週期性特徵）。
 - `hour_cos`: 小時數的餘弦轉換（用於週期性特徵）。
 - `is_weekend`: 判斷是否為週末 (0=否, 1=是)。
+
+</details>
 
 ## 環境建立與啟動
 
@@ -107,3 +119,29 @@ uv add streamlit streamlit-autorefresh
 uv run streamlit run src/dashboard/dashboard.py
 ```
 會產生網頁視窗展示數據。
+
+## 專案結構
+
+```text
+Social-Media-Trending-Post-Predictor/
+├── src/
+│   ├── analysis/          # 分析腳本
+│   ├── dashboard/         # 儀表板應用程式
+│   │   └── dashboard.py
+│   ├── data/              # 資料蒐集與儲存
+│   │   └── ptt_monitor.py
+│   ├── features/          # 特徵工程
+│   │   └── feature_utils.py
+│   ├── model/             # 模型訓練邏輯
+│   └── main.py            # 程式主入口
+├── data/                  # 資料儲存 (CSV 快照)
+├── ptt_data.db            # SQLite 資料庫
+├── pyproject.toml         # 專案設定檔
+└── README.md
+```
+
+- `src/main.py`: 程式入口點。
+- `src/data/`: 爬蟲與資料庫管理。
+- `src/features/`: 特徵工程工具。
+- `src/model/`: 模型訓練與評估邏輯。
+- `src/dashboard/`: Streamlit 儀表板應用程式。

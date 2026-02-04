@@ -23,13 +23,37 @@ This project is a PTT (Bulletin Board System) data analysis and adaptive predict
 
 The CSV snapshots (e.g., `data/YYYYMMDD/...csv`) contain the following key fields:
 
+<details>
+<summary>Click to expand detailed data fields</summary>
+
 - `Post_ID`: Unique identifier for the post.
+- `source_board`: Board name of the post source (e.g., Gossiping).
 - `title`: Post title.
-- `source_board`: Source board name.
-- `real_push_score`: Net score (Push - Boo).
+- `url`: Full URL of the post.
+- `author`: Post author.
+- `crawl_time`: Time when the data was crawled.
+- `post_time`: Time when the post was published.
+- `nrec_tag`: Recommendation Tag: Push/Boo tag indicating popularity (e.g., 爆, X1, X2).
+- `category`: Post category (if any).
+- `title_char_count`: Number of characters in the title.
+- `post_hour`: Hour of publication (0-23).
+- `real_push_score`: Net score (Push count - Boo count).
+- `push_count`: Number of pushes.
+- `boo_count`: Number of boos.
+- `life_minutes`: Minutes elapsed from publication to crawl time.
 - `push_acceleration`: Rate of push accumulation.
-- `key_phrases`: Extracted keywords from the content.
-- `post_time`: Time the post was published.
+- `push_boo_ratio`: Ratio of pushes to boos.
+- `author_avg_push`: Average push count for the author.
+- `content_word_count`: Word count of the content.
+- `content_url_ratio`: Ratio of URLs in the content.
+- `q_mark_density`: Density of question marks in the content.
+- `e_mark_density`: Density of exclamation marks in the content.
+- `key_phrases`: Keywords or phrases extracted from content.
+- `hour_sin`: Sine transformation of the hour (for cyclical features).
+- `hour_cos`: Cosine transformation of the hour (for cyclical features).
+- `is_weekend`: Boolean indicating if it creates on a weekend (0=No, 1=Yes).
+
+</details>
 
 ## Installation & Setup
 
@@ -84,13 +108,22 @@ uv run streamlit run src/dashboard/dashboard.py
 
 ## Project Structure
 
-```mermaid
-graph TD
-    A[src/main.py] -->|Controls| B(src/data/ptt_monitor.py)
-    A -->|Uses| C(src/features/feature_utils.py)
-    A -->|Trains/Loads| D[src/model/]
-    B -->|Saves to| E[(SQLite / CSV)]
-    F[src/dashboard/dashboard.py] -->|Reads| E
+```text
+Social-Media-Trending-Post-Predictor/
+├── src/
+│   ├── analysis/          # Analysis scripts
+│   ├── dashboard/         # Dashboard application
+│   │   └── dashboard.py
+│   ├── data/              # Data collection and storage
+│   │   └── ptt_monitor.py
+│   ├── features/          # Feature engineering
+│   │   └── feature_utils.py
+│   ├── model/             # Model training logic
+│   └── main.py            # Main entry point
+├── data/                  # Data storage (CSV snapshots)
+├── ptt_data.db            # SQLite database
+├── pyproject.toml         # Project configuration
+└── README.md
 ```
 
 - `src/main.py`: Entry point.
